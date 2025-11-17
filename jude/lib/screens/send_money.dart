@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:jude/core/widgets/custom_button.dart';
+
+import '../core/theme/app_theme.dart';
+import '../core/widgets/custom_card.dart';
+import '../core/widgets/custom_text_field.dart';
 
 class SendMoneyPage extends StatefulWidget {
   const SendMoneyPage({super.key});
@@ -8,23 +13,49 @@ class SendMoneyPage extends StatefulWidget {
   State<SendMoneyPage> createState() => _SendMoneyPageState();
 }
 
-class _SendMoneyPageState extends State<SendMoneyPage> {
+class _SendMoneyPageState extends State<SendMoneyPage>
+    with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _recipientController = TextEditingController();
   final _amountController = TextEditingController();
+  final _noteController = TextEditingController();
   
   String _selectedPaymentMethod = 'Bank Transfer';
   bool _isFavorite = false;
   bool _showSuccess = false;
   bool _isLoading = false;
+  
+  late AnimationController _successController;
+  late Animation<double> _successScale;
 
-  final List<String> _paymentMethods = [
-    'Bank Transfer',
-    'Credit Card',
-    'Debit Card',
-    'PayPal',
-    'Mobile Money',
+  final List<Map<String, dynamic>> _paymentMethods = [
+    {'name': 'Bank Transfer', 'icon': Icons.account_balance},
+    {'name': 'Credit Card', 'icon': Icons.credit_card},
+    {'name': 'Debit Card', 'icon': Icons.payment},
+    {'name': 'PayPal', 'icon': Icons.account_balance_wallet},
+    {'name': 'Mobile Money', 'icon': Icons.phone_android},
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _successController = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+    _successScale = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _successController, curve: Curves.elasticOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _successController.dispose();
+    _recipientController.dispose();
+    _amountController.dispose();
+    _noteController.dispose();
+    super.dispose();
+  }
 
   String? _validateRecipient(String? value) {
     if (value == null || value.isEmpty) {
@@ -32,6 +63,9 @@ class _SendMoneyPageState extends State<SendMoneyPage> {
     }
     if (value.length < 3) {
       return 'Name must be at least 3 characters';
+    }
+    if (!RegExp(r'^[a-zA-Z\s]+$').hasMatch(value)) {
+      return 'Name can only contain letters';
     }
     return null;
   }
@@ -55,26 +89,31 @@ class _SendMoneyPageState extends State<SendMoneyPage> {
 
   void _handleSendMoney() async {
     if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isLoading = true;
-      });
-
-      // Simulate API call
+      setState(() => _isLoading = true);
+      
       await Future.delayed(const Duration(seconds: 2));
-
-      setState(() {
-        _isLoading = false;
-        _showSuccess = true;
-      });
-
-      // Auto-hide success message
-      Future.delayed(const Duration(seconds: 3), () {
-        if (mounted) {
-          setState(() {
-            _showSuccess = false;
-          });
-        }
-      });
+      
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _showSuccess = true;
+        });
+        
+        _successController.forward();
+        
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) {
+            _successController.reverse();
+            setState(() => _showSuccess = false);
+            
+            // Clear form
+            _recipientController.clear();
+            _amountController.clear();
+            _noteController.clear();
+            _isFavorite = false;
+          }
+        });
+      }
     }
   }
 
@@ -82,9 +121,14 @@ class _SendMoneyPageState extends State<SendMoneyPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Send Money'),
-        backgroundColor: const Color(0xFF2196F3),
-        elevation: 0,
+        title: const Text(
+          'Send Money',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: Stack(
         children: [
@@ -95,241 +139,347 @@ class _SendMoneyPageState extends State<SendMoneyPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Recipient Name Field
-                  const Text(
-                    'Recipient Details',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1A1A1A),
-                    ),
+                  // Recipient Section
+                  const _SectionHeader(
+                    icon: Icons.person_outline,
+                    title: 'Recipient Details',
                   ),
                   const SizedBox(height: 16),
-                  TextFormField(
+                  CustomTextField(
                     controller: _recipientController,
+                    label: 'Recipient Name',
+                    hint: 'Enter full name',
+                    prefixIcon: Icons.person,
                     validator: _validateRecipient,
-                    decoration: InputDecoration(
-                      labelText: 'Recipient Name',
-                      hintText: 'Enter recipient\'s name',
-                      prefixIcon: const Icon(Icons.person_outline),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      filled: true,
-                      fillColor: Colors.white,
-                      errorMaxLines: 2,
-                    ),
                   ),
                   const SizedBox(height: 24),
-
-                  // Amount Field
-                  const Text(
-                    'Amount',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1A1A1A),
-                    ),
+                  
+                  // Amount Section
+                  const _SectionHeader(
+                    icon: Icons.attach_money,
+                    title: 'Amount',
                   ),
                   const SizedBox(height: 16),
-                  TextFormField(
+                  CustomTextField(
                     controller: _amountController,
+                    label: 'Amount',
+                    hint: '0.00',
+                    prefixIcon: Icons.attach_money,
                     validator: _validateAmount,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    decoration: InputDecoration(
-                      labelText: 'Amount',
-                      hintText: '0.00',
-                      prefixIcon: const Icon(Icons.attach_money),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      filled: true,
-                      fillColor: Colors.white,
-                      errorMaxLines: 2,
-                    ),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+                    ],
                   ),
                   const SizedBox(height: 24),
-
-                  // Payment Method Dropdown
-                  const Text(
-                    'Payment Method',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1A1A1A),
-                    ),
+                  
+                  // Payment Method Section
+                  const _SectionHeader(
+                    icon: Icons.payment,
+                    title: 'Payment Method',
                   ),
                   const SizedBox(height: 16),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey[400]!),
-                    ),
+                  CustomCard(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
                         value: _selectedPaymentMethod,
                         isExpanded: true,
                         icon: const Icon(Icons.arrow_drop_down),
-                        items: _paymentMethods.map((String method) {
+                        items: _paymentMethods.map((method) {
                           return DropdownMenuItem<String>(
-                            value: method,
+                            value: method['name'],
                             child: Row(
                               children: [
                                 Icon(
-                                  _getPaymentIcon(method),
+                                  method['icon'],
                                   size: 20,
-                                  color: const Color(0xFF2196F3),
+                                  color: AppTheme.primaryColor,
                                 ),
                                 const SizedBox(width: 12),
-                                Text(method),
+                                Text(
+                                  method['name'],
+                                  style: const TextStyle(fontSize: 16),
+                                ),
                               ],
                             ),
                           );
                         }).toList(),
                         onChanged: (String? newValue) {
                           if (newValue != null) {
-                            setState(() {
-                              _selectedPaymentMethod = newValue;
-                            });
+                            setState(() => _selectedPaymentMethod = newValue);
                           }
                         },
                       ),
                     ),
                   ),
                   const SizedBox(height: 24),
-
-                  // Favorite Switch
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey[300]!),
-                    ),
+                  
+                  // Note Section
+                  const _SectionHeader(
+                    icon: Icons.note_outlined,
+                    title: 'Note (Optional)',
+                  ),
+                  const SizedBox(height: 16),
+                  CustomTextField(
+                    controller: _noteController,
+                    label: 'Add a note',
+                    hint: 'What\'s this for?',
+                    prefixIcon: Icons.edit_outlined,
+                    maxLength: 100,
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // Favorite Toggle
+                  CustomCard(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
-                      vertical: 8,
+                      vertical: 12,
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Row(
+                        Row(
                           children: [
                             Icon(
-                              Icons.star_outline,
-                              color: Color(0xFF2196F3),
+                              _isFavorite ? Icons.star : Icons.star_outline,
+                              color: _isFavorite
+                                  ? Colors.amber
+                                  : AppTheme.textSecondary,
+                              size: 24,
                             ),
-                            SizedBox(width: 12),
-                            Text(
-                              'Add to Favorites',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                              ),
+                            const SizedBox(width: 12),
+                            const Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Add to Favorites',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.textPrimary,
+                                  ),
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  'Quick access for next time',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: AppTheme.textSecondary,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
                         Switch(
                           value: _isFavorite,
                           onChanged: (bool value) {
-                            setState(() {
-                              _isFavorite = value;
-                            });
+                            setState(() => _isFavorite = value);
                           },
-                          activeThumbColor: const Color(0xFF2196F3),
+                          activeThumbColor: AppTheme.primaryColor,
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 32),
-
+                  
+                  // Summary Card
+                  if (_amountController.text.isNotEmpty &&
+                      _recipientController.text.isNotEmpty)
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      child: CustomCard(
+                        color: AppTheme.primaryColor.withValues(alpha: 0.05),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Transaction Summary',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            _SummaryRow(
+                              label: 'Recipient',
+                              value: _recipientController.text,
+                            ),
+                            _SummaryRow(
+                              label: 'Amount',
+                              value: '\${_amountController.text}',
+                            ),
+                            _SummaryRow(
+                              label: 'Payment Method',
+                              value: _selectedPaymentMethod,
+                            ),
+                            const Divider(height: 24),
+                            _SummaryRow(
+                              label: 'Total',
+                              value: '\${_amountController.text}',
+                              isTotal: true,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 32),
+                  
                   // Send Button
                   CustomButton(
                     text: 'Send Money',
                     onPressed: _handleSendMoney,
                     isLoading: _isLoading,
+                    icon: Icons.send_rounded,
                   ),
                   const SizedBox(height: 20),
                 ],
               ),
             ),
           ),
-
+          
           // Animated Success Message
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 500),
-            curve: Curves.easeInOut,
-            top: _showSuccess ? 20 : -100,
-            left: 20,
-            right: 20,
-            child: AnimatedOpacity(
-              duration: const Duration(milliseconds: 500),
-              opacity: _showSuccess ? 1.0 : 0.0,
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.green,
-                  borderRadius: BorderRadius.circular(12),
+          if (_showSuccess)
+            Positioned(
+              top: 20,
+              left: 20,
+              right: 20,
+              child: ScaleTransition(
+                scale: _successScale,
+                child: CustomCard(
+                  color: AppTheme.successColor,
+                  padding: const EdgeInsets.all(20),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.green.withValues(alpha: 0.3),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
+                      color: AppTheme.successColor.withValues(alpha: 0.4),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
                     ),
                   ],
-                ),
-                child: const Row(
-                  children: [
-                    Icon(
-                      Icons.check_circle,
-                      color: Colors.white,
-                      size: 28,
-                    ),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Money sent successfully!',
-                        style: TextStyle(
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.check_circle_outline,
                           color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                          size: 28,
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 16),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Success!',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Money sent successfully',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// Section Header Widget
+class _SectionHeader extends StatelessWidget {
+  final IconData icon;
+  final String title;
+
+  const _SectionHeader({
+    required this.icon,
+    required this.title,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(
+          icon,
+          size: 20,
+          color: AppTheme.primaryColor,
+        ),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.textPrimary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// Summary Row Widget
+class _SummaryRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool isTotal;
+
+  const _SummaryRow({
+    required this.label,
+    required this.value,
+    this.isTotal = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: isTotal ? 16 : 14,
+              fontWeight: isTotal ? FontWeight.bold : FontWeight.w500,
+              color: isTotal ? AppTheme.textPrimary : AppTheme.textSecondary,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: isTotal ? 18 : 14,
+              fontWeight: isTotal ? FontWeight.bold : FontWeight.w600,
+              color: AppTheme.textPrimary,
             ),
           ),
         ],
       ),
     );
-  }
-
-  IconData _getPaymentIcon(String method) {
-    switch (method) {
-      case 'Bank Transfer':
-        return Icons.account_balance;
-      case 'Credit Card':
-        return Icons.credit_card;
-      case 'Debit Card':
-        return Icons.payment;
-      case 'PayPal':
-        return Icons.account_balance_wallet;
-      case 'Mobile Money':
-        return Icons.phone_android;
-      default:
-        return Icons.payment;
-    }
-  }
-
-  @override
-  void dispose() {
-    _recipientController.dispose();
-    _amountController.dispose();
-    super.dispose();
   }
 }
